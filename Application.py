@@ -72,6 +72,9 @@ class Application:
 
         return await action(context, payload_object)
 
+    def sync_dispatch(self, namespace, payload):
+        return asyncio.run(self.dispatch(namespace, payload))
+
     def load_components(self, components_list=[]):
         for i in range(len(components_list)):
             component_name = components_list[i]
