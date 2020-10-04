@@ -8,6 +8,9 @@ class ObjectContainer:
     def __init__(self):
         pass
 
+    def set(self, attr_name, attr_value):
+        self.__setattr__(attr_name, attr_value)
+
 
 class Application:
     def __init__(self, system_arguments=[]):
@@ -38,17 +41,21 @@ class Application:
 
     def add_component(self, component_class):
         new_component = component_class(self)
-        self.states.__setattr__(new_component.name, new_component.state)
-        self.mutations.__setattr__(new_component.name, new_component.mutations)
-        self.actions.__setattr__(new_component.name, new_component.actions)
-        self.getters.__setattr__(new_component.name, new_component.getters)
-        self.components.__setattr__(new_component.name, new_component)
+        self.states.set(new_component.name, new_component.state)
+        self.mutations.set(new_component.name, new_component.mutations)
+        self.actions.set(new_component.name, new_component.actions)
+        self.getters.set(new_component.name, new_component.getters)
+        self.components.set(new_component.name, new_component)
 
         return getattr(self.components, new_component.name)
 
     def commit(self, namespace, value):
-        mutation = self.namespace('mutations', namespace)
-        mutation(self.states, value)
+        try:
+            mutation = self.namespace('mutations', namespace)
+            mutation(self.states, value)
+        except AttributeError as error:
+            self.emit('Commit.AttributeError', error)
+
         self.emit(namespace, value)
 
     async def _dispatch(self, namespace, payload):
@@ -59,9 +66,9 @@ class Application:
             payload_object.__setattr__(key, payload[key])
 
         context = ObjectContainer()
-        context.__setattr__("commit", self.commit)
-        context.__setattr__("states", self.states)
-        context.__setattr__("dispatch", self._dispatch)
+        context.set("commit", self.commit)
+        context.set("states", self.states)
+        context.set("dispatch", self._dispatch)
 
         return await action(context, payload_object)
 
