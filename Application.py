@@ -58,7 +58,7 @@ class Application:
 
         self.emit(namespace, value)
 
-    async def _dispatch(self, namespace, payload):
+    async def dispatch(self, namespace, payload):
         action = self.namespace('actions', namespace)
         payload_object = ObjectContainer()
 
@@ -68,12 +68,9 @@ class Application:
         context = ObjectContainer()
         context.set("commit", self.commit)
         context.set("states", self.states)
-        context.set("dispatch", self._dispatch)
+        context.set("dispatch", self.dispatch)
 
         return await action(context, payload_object)
-
-    def dispatch(self, namespace, payload):
-        return asyncio.run(self._dispatch(namespace, payload))
 
     def load_components(self, components_list=[]):
         for i in range(len(components_list)):
