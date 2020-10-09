@@ -1,5 +1,6 @@
 import sys
 import asyncio
+from PyQt5.QtWidgets import QApplication
 from importlib import import_module
 sys.path.append('Components')
 
@@ -12,15 +13,18 @@ class ObjectContainer:
         self.__setattr__(attr_name, attr_value)
 
 
-class Application:
-    def __init__(self, system_arguments=[]):
-        self.system_arguments = system_arguments
+class Application(QApplication):
+    def __init__(self, sys_args, components):
+        super().__init__(sys_args)
+
         self.states = ObjectContainer()
         self.mutations = ObjectContainer()
         self.actions = ObjectContainer()
         self.getters = ObjectContainer()
         self.components = ObjectContainer()
         self._mutations_events = {}
+
+        self.load_components(components)
 
     def namespace(self, type_ns, namespace):
         root = self.states
@@ -58,7 +62,7 @@ class Application:
 
         self.emit(namespace, value)
 
-    async def dispatch(self, namespace, payload):
+    def build_action(self, namespace, payload):
         action = self.namespace('actions', namespace)
         payload_object = ObjectContainer()
 
@@ -70,7 +74,11 @@ class Application:
         context.set("states", self.states)
         context.set("dispatch", self.dispatch)
 
-        return await action(context, payload_object)
+        return {'action': action, 'context': context, 'payload': payload_object}
+
+    async def dispatch(self, namespace, payload):
+        build = self.build_action(namespace, payload)
+        return await build['action'](build['context'], build['payload'])
 
     def sync_dispatch(self, namespace, payload):
         return asyncio.run(self.dispatch(namespace, payload))
@@ -95,10 +103,17 @@ class Application:
 
         self._mutations_events[mutation].append({"fn": method, "once": True})
 
-    def emit(self, event_name, value):
+    def emit(self, event_name, payload):
         if event_name in self._mutations_events:
             event = self._mutations_events[event_name]
             for i in range(len(event)):
-                event[i]['fn'](value)
+                event[i]['fn'](payload)
                 if event[i]['once']:
                     del event[i]
+
+    def exec_task(self, payload):
+        pass
+
+    def run(self):
+        self.emit('initialization', {})
+        self.exec_()

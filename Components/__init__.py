@@ -10,6 +10,11 @@ class AbstractComponent:
         self.actions = ObjectContainer()
         self.mutations = ObjectContainer()
 
+        self.subscribe('initialization', self.initialization)
+
+    def initialization(self, payload):
+        pass
+
     def commit(self, namespace, value):
         self.root_app.commit(namespace, value)
 
