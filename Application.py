@@ -1,119 +1,102 @@
-import sys
 import asyncio
-from PyQt5.QtWidgets import QApplication
-from importlib import import_module
-sys.path.append('Components')
 
 
-class ObjectContainer:
+class Context:
     def __init__(self):
         pass
 
-    def set(self, attr_name, attr_value):
-        self.__setattr__(attr_name, attr_value)
+
+class Payload:
+    def __init__(self):
+        pass
 
 
-class Application(QApplication):
-    def __init__(self, sys_args, components):
-        super().__init__(sys_args)
+class AbstractComponent:
+    def __init__(self, name, root):
+        self.name = name
+        self.root = root
 
-        self.states = ObjectContainer()
-        self.mutations = ObjectContainer()
-        self.actions = ObjectContainer()
-        self.getters = ObjectContainer()
-        self.components = ObjectContainer()
-        self._mutations_events = {}
+        self.state = {}
+        self.actions = {}
+        self.mutations = {}
 
-        self.load_components(components)
+    async def dispatch(self, namespace, payload=Payload()):
+        return await self.root.dispatch(namespace, payload)
 
-    def namespace(self, type_ns, namespace):
-        root = self.states
-        if type_ns == 'actions':
-            root = self.actions
-        elif type_ns == 'getters':
-            root = self.getters
-        elif type_ns == 'mutations':
-            root = self.mutations
+    def dispatch_sync(self, namespace, payload=Payload()):
+        return self.root.dispatch_sync(namespace, payload)
 
+    def commit(self, namespace, payload=Payload()):
+        self.root.commit(namespace, payload)
+
+    def on(self, event_name, callback):
+        self.root.on(event_name, callback)
+
+    def emit(self, event_name, payload=Payload()):
+        self.root.emit(event_name, payload)
+
+
+class RootApplication:
+    def __init__(self):
+        self.states = {}
+        self.actions = {}
+        self.mutations = {}
+        self.events = {}
+        self.components = {}
+
+    def get_namespace(self, namespace, _space="actions"):
         parts = namespace.split('.')
+        root = getattr(self, _space)
 
-        for i in range(len(parts)):
-            if getattr(root, parts[i]):
-                root = getattr(root, parts[i])
+        for i in parts:
+            if root[i]:
+                root = root[i]
 
         return root
 
-    def add_component(self, component_class):
-        new_component = component_class(self)
-        self.states.set(new_component.name, new_component.state)
-        self.mutations.set(new_component.name, new_component.mutations)
-        self.actions.set(new_component.name, new_component.actions)
-        self.getters.set(new_component.name, new_component.getters)
-        self.components.set(new_component.name, new_component)
+    @staticmethod
+    def build_payload_object(data):
+        payload = Payload()
+        for i in data:
+            payload.__setattr__(i, data[i])
+        return payload
 
-        return getattr(self.components, new_component.name)
+    async def dispatch(self, action_name, payload=Payload()):
+        action = self.get_namespace(action_name)
 
-    def commit(self, namespace, value):
-        try:
-            mutation = self.namespace('mutations', namespace)
-            mutation(self.states, value)
-        except AttributeError as error:
-            self.emit('Commit.AttributeError', error)
+        context = Context()
+        context.__setattr__("commit", self.commit)
+        context.__setattr__("dispatch", self.dispatch)
+        context.__setattr__("dispatch_sync", self.dispatch_sync)
 
-        self.emit(namespace, value)
+        self.emit(action_name, payload)
 
-    def build_action(self, namespace, payload):
-        action = self.namespace('actions', namespace)
-        payload_object = ObjectContainer()
+        return await action(context, self.build_payload_object(payload))
 
-        for key in payload:
-            payload_object.__setattr__(key, payload[key])
+    def dispatch_sync(self, action_name, payload=Payload()):
+        return asyncio.run(self.dispatch(action_name, payload))
 
-        context = ObjectContainer()
-        context.set("commit", self.commit)
-        context.set("states", self.states)
-        context.set("dispatch", self.dispatch)
+    def commit(self, mutation_name, payload=Payload()):
+        mutation = self.get_namespace(mutation_name, 'mutations')
+        mutation(self.states, self.build_payload_object(payload))
+        self.emit(mutation_name, payload)
 
-        return {'action': action, 'context': context, 'payload': payload_object}
+    def on(self, event_name, callback):
+        self.events[event_name] = callback
 
-    async def dispatch(self, namespace, payload):
-        build = self.build_action(namespace, payload)
-        return await build['action'](build['context'], build['payload'])
+    def emit(self, event_name, payload=Payload()):
+        if event_name in self.events:
+            context = Context()
+            context.__setattr__("commit", self.commit)
+            context.__setattr__("dispatch", self.dispatch)
+            context.__setattr__("states", self.states)
 
-    def sync_dispatch(self, namespace, payload):
-        return asyncio.run(self.dispatch(namespace, payload))
+            self.events[event_name](context, payload)
 
-    def load_components(self, components_list=[]):
-        for i in range(len(components_list)):
-            component_name = components_list[i]
-            package = import_module(f"{component_name}")
-            component_class = getattr(package, f"{component_name}Component")
-
-            self.add_component(component_class)
-
-    def subscribe(self, mutation, method):
-        if mutation not in self._mutations_events:
-            self._mutations_events[mutation] = []
-
-        self._mutations_events[mutation].append({"fn": method, "once": False})
-
-    def subscribe_once(self, mutation, method):
-        if mutation not in self._mutations_events:
-            self._mutations_events[mutation] = []
-
-        self._mutations_events[mutation].append({"fn": method, "once": True})
-
-    def emit(self, event_name, payload):
-        if event_name in self._mutations_events:
-            event = self._mutations_events[event_name]
-            for i in range(len(event)):
-                event[i]['fn'](payload)
-                if event[i]['once']:
-                    del event[i]
-
-    def exec_task(self, payload):
-        pass
-
-    def run(self):
-        self.emit('initialization', {})
-        self.exec_()
+    def use(self, component_class):
+        if issubclass(component_class, AbstractComponent):
+            new_component = component_class(self)
+            self.states[new_component.name] = new_component.state
+            self.actions[new_component.name] = new_component.actions
+            self.mutations[new_component.name] = new_component.mutations
+            self.components[new_component.name] = new_component
