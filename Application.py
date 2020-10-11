@@ -1,3 +1,6 @@
+from threading import Thread, Lock
+from queue import Queue
+import os
 import asyncio
 
 
@@ -36,6 +39,24 @@ class AbstractComponent:
         self.root.emit(event_name, payload)
 
 
+class Worker(Thread):
+    def __init__(self, root, name):
+        super().__init__()
+
+        self.name = name
+        self.root = root
+
+    def run(self):
+        while True:
+            self.root.lock.acquire()
+            if not self.root.queue.empty():
+                namespace, payload = self.root.queue.get()
+                self.root.lock.release()
+                self.root.dispatch_sync(namespace, payload)
+            else:
+                self.root.lock.release()
+
+
 class RootApplication:
     def __init__(self):
         self.states = {}
@@ -43,6 +64,26 @@ class RootApplication:
         self.mutations = {}
         self.events = {}
         self.components = {}
+
+        # Multi Threading Attributes
+        self.threads = []
+        self.queue = Queue(10)
+        self.lock = Lock()
+
+        for i in range(os.cpu_count()-2):
+            self.create_worker(f'Thread_{i}')
+
+        for thread in self.threads:
+            thread.start()
+
+    def create_worker(self, name):
+        new_worker = Worker(self, name)
+        self.threads.append(new_worker)
+
+    def add_worker_task(self, namespace, payload={}):
+        self.lock.acquire()
+        self.queue.put((namespace, payload))
+        self.lock.release()
 
     def get_namespace(self, namespace, _space="actions"):
         parts = namespace.split('.')
@@ -67,7 +108,6 @@ class RootApplication:
         context = Context()
         context.__setattr__("commit", self.commit)
         context.__setattr__("dispatch", self.dispatch)
-        context.__setattr__("dispatch_sync", self.dispatch_sync)
 
         self.emit(action_name, payload)
 
@@ -75,6 +115,9 @@ class RootApplication:
 
     def dispatch_sync(self, action_name, payload=Payload()):
         return asyncio.run(self.dispatch(action_name, payload))
+
+    def dispatch_threaded(self, action_name, payload={}):
+        self.add_worker_task(action_name, payload)
 
     def commit(self, mutation_name, payload=Payload()):
         mutation = self.get_namespace(mutation_name, 'mutations')

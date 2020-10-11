@@ -54,7 +54,7 @@ if __name__ == '__main__':
     i = 0
 
     # On exécute l'action plusieurs fois pour clairement voir les effets
-    while i < 5:
+    while i < 20:
         print(f'LOOP : {i}')
-        app.dispatch_sync('Test.chooseNameAction', {'names': ['marc', 'morgan', 'elie', 'mia']})
+        app.dispatch_threaded('Test.chooseNameAction', {'names': ['marc', 'morgan', 'elie', 'mia']})
         i += 1
