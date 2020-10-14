@@ -23,11 +23,14 @@ class AbstractComponent:
         self.actions = {}
         self.mutations = {}
 
-    async def dispatch(self, namespace, payload=Payload()):
+    async def dispatch(self, namespace, payload={}):
         return await self.root.dispatch(namespace, payload)
 
-    def dispatch_sync(self, namespace, payload=Payload()):
+    def dispatch_sync(self, namespace, payload={}):
         return self.root.dispatch_sync(namespace, payload)
+
+    def dispatch_threaded(self, namespace, payload={}):
+        return self.root.dispatch_threaded(namespace, payload)
 
     def commit(self, namespace, payload=Payload()):
         self.root.commit(namespace, payload)
