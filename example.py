@@ -12,6 +12,7 @@ class TestComponent(AbstractComponent):
 
     def testaction_action(self, context, payload):
         context.commit('Test.testmutation', {})
+        return "Pouet"
 
     def testgetter_getter(self):
         return f'{self.state.test} Test Getter'
@@ -49,4 +50,4 @@ class Application(AbstractApplication):
 
 
 app = Application()
-app.threaded_dispatch('Test.testaction', {})
+print(app.threaded_dispatch('Test.testaction', {}))

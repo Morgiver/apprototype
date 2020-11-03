@@ -3,6 +3,17 @@ from pubsub import pub
 import sys
 
 
+class ThreadedDispatch(Thread):
+    def __init__(self, dispatch, action_name, payload):
+        super().__init__()
+        self.dispatch = dispatch
+        self.action_name = action_name
+        self.payload = payload
+
+    def run(self):
+        return self.dispatch(self.action_name, self.payload)
+
+
 def object_container_class_builder(name):
     """
     object_container_class_builder
@@ -165,7 +176,7 @@ class AbstractApplication:
             self.logger('DISPATCH_ERROR', name, sys.exc_info()[0])
 
     def threaded_dispatch(self, action_name, payload):
-        Thread(target=self.dispatch, args=(action_name, payload)).run()
+        return ThreadedDispatch(self.dispatch, action_name, payload).run()
 
     def commit(self, mutation_name, payload):
         payload = self.build_payload(payload)
