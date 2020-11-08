@@ -1,6 +1,8 @@
-from threading import *
-from pubsub import pub
 import sys
+import os
+from threading import *
+from queue import Queue
+from pubsub import pub
 
 
 class ThreadedDispatch(Thread):
@@ -11,7 +13,24 @@ class ThreadedDispatch(Thread):
         self.payload = payload
 
     def run(self):
-        return self.dispatch(self.action_name, self.payload)
+        self.dispatch(self.action_name, self.payload)
+
+
+class ThreadWorker(Thread):
+    def __init__(self, q, lock, app):
+        super().__init__()
+
+        self.queue = q
+        self.lock = lock
+        self.app = app
+
+    def run(self):
+        while True:
+            self.lock.acquire()
+            if not self.queue.empty():
+                action_name, payload = self.queue.get()
+                self.lock.release()
+                self.app.dispatch(action_name, payload)
 
 
 def object_container_class_builder(name):
@@ -98,6 +117,31 @@ class AbstractApplication:
         self.mutations = MutationsContainer()
         self.getters = GettersContainer()
 
+        self.workers = None
+        self.lock = None
+        self.queue = None
+
+    def build_parallel_workers(self, max_workers=os.cpu_count() - 1, max_tasks=os.cpu_count() - 1):
+        self.workers = []
+        self.lock = Lock()
+        self.queue = Queue(max_tasks)
+
+        for i in range(max_workers):
+            self.spawn_worker()
+
+        self.start_workers()
+
+    def spawn_worker(self):
+        self.workers.append(ThreadWorker(self.queue, self.lock, self))
+
+    def start_workers(self):
+        for i in range(len(self.workers)):
+            self.workers[i].start()
+
+    def join_workers(self):
+        for i in range(len(self.workers)):
+            self.workers[i].join()
+
     @staticmethod
     def find_method(root, method_namespace):
         """
@@ -176,7 +220,10 @@ class AbstractApplication:
             self.logger('DISPATCH_ERROR', name, sys.exc_info()[0])
 
     def threaded_dispatch(self, action_name, payload):
-        return ThreadedDispatch(self.dispatch, action_name, payload).run()
+        ThreadedDispatch(self.dispatch, action_name, payload).run()
+
+    def task_dispatch(self, action_name, payload):
+        self.queue.put((action_name, payload))
 
     def commit(self, mutation_name, payload):
         payload = self.build_payload(payload)
