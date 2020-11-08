@@ -2,52 +2,38 @@
 from AbstractApplication import *
 
 
-class TestComponent(AbstractComponent):
+class MainComponent(AbstractComponent):
     def __init__(self, root):
         self.data = {
-            "test": "Prout"
+            "counter": 0
         }
 
-        super().__init__("Test", root)
+        super().__init__("Main", root)
 
-    def testaction_action(self, context, payload):
-        context.commit('Test.testmutation', {})
-        return "Pouet"
+    def say_action(self, context, payload):
+        print(payload.message)
 
-    def testgetter_getter(self):
-        return f'{self.state.test} Test Getter'
+    def count_message_action(self, context, payload):
+        context.commit('Main.add_message', {})
 
-    def testmutation_mutation(self, context, payload):
-        context.states.Test.test = "Pouet"
+    def add_message_mutation(self, context, payload):
+        self.state.counter += 1
 
-    def testaction_action_listener(self, context, payload):
-        print('Test Action Listener')
-        print(f'{self.testgetter}')
-
-    def testmutation_mutation_listener(self, context, payload):
-        pass
-
-
-class TestListenComponent(AbstractComponent):
-    def __init__(self, root):
-        self.data = {}
-
-        super().__init__("TestListen", root)
-
-    def testaction_action_listener(self, context, payload):
-        print('Test Action Listener in TestListenComponent')
-
-    def testmutation_mutation_listener(self, context, payload):
-        print('Test Mutation Listener in TestListenComponent')
+    def say_action_listener(self, context, payload):
+        context.dispatch('Main.count_message', {})
 
 
 class Application(AbstractApplication):
     def __init__(self):
         super().__init__()
 
-        self.use(TestComponent)
-        self.use(TestListenComponent)
+        self.use(MainComponent)
 
 
 app = Application()
-print(app.threaded_dispatch('Test.testaction', {}))
+app.dispatch('Main.say', {'message': 'Hello World !'})
+app.dispatch('Main.say', {'message': 'Hello World !'})
+app.dispatch('Main.say', {'message': 'Hello World !'})
+app.dispatch('Main.say', {'message': 'Hello World !'})
+
+print(app.states.Main.counter)

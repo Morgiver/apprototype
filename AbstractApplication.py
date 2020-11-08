@@ -17,12 +17,12 @@ class ThreadedDispatch(Thread):
 
 
 class ThreadWorker(Thread):
-    def __init__(self, q, lock, app):
+    def __init__(self, q, lock, dispatch):
         super().__init__()
 
         self.queue = q
         self.lock = lock
-        self.app = app
+        self.dispatch = dispatch
 
     def run(self):
         while True:
@@ -30,7 +30,9 @@ class ThreadWorker(Thread):
             if not self.queue.empty():
                 action_name, payload = self.queue.get()
                 self.lock.release()
-                self.app.dispatch(action_name, payload)
+                self.dispatch(action_name, payload)
+            else:
+                self.lock.release()
 
 
 def object_container_class_builder(name):
@@ -132,7 +134,7 @@ class AbstractApplication:
         self.start_workers()
 
     def spawn_worker(self):
-        self.workers.append(ThreadWorker(self.queue, self.lock, self))
+        self.workers.append(ThreadWorker(self.queue, self.lock, self.dispatch))
 
     def start_workers(self):
         for i in range(len(self.workers)):
@@ -189,6 +191,8 @@ class AbstractApplication:
         if c_type == 'action':
             c.set('states', self.states)
             c.set('dispatch', self.dispatch)
+            c.set('task_dispatch', self.task_dispatch)
+            c.set('thread_dispatch', self.thread_dispatch)
             c.set('commit', self.commit)
 
         if c_type == 'listener':
@@ -219,8 +223,8 @@ class AbstractApplication:
         except:
             self.logger('DISPATCH_ERROR', name, sys.exc_info()[0])
 
-    def threaded_dispatch(self, action_name, payload):
-        ThreadedDispatch(self.dispatch, action_name, payload).run()
+    def thread_dispatch(self, action_name, payload):
+        ThreadedDispatch(self.dispatch, action_name, payload).start()
 
     def task_dispatch(self, action_name, payload):
         self.queue.put((action_name, payload))
